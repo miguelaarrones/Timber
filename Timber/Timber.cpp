@@ -1,9 +1,22 @@
 // Include important C++ libraries here.
 #include "pch.h"
 #include <SFML/Graphics.hpp>
+#include <SFML/Audio.hpp>
 #include <string>
 
 using namespace sf;
+
+// Function declaration
+void UpdateBranches(int seed);
+
+const int NUM_BRANCHES = 6;
+Sprite branches[NUM_BRANCHES];
+
+// Where is the player/branch
+// Left or Right
+enum class Side { LEFT, RIGHT, NONE };
+Side branchPositions[NUM_BRANCHES];
+
 int main()
 {
     // Create a video mode object
@@ -92,6 +105,7 @@ int main()
     int score = 0;
     sf::Text messageText;
     sf::Text scoreText;
+    sf::Text frameRateText;
 
     // Choose a font
     Font font;
@@ -100,10 +114,12 @@ int main()
     // Set font to the message
     messageText.setFont(font);
     scoreText.setFont(font);
+    frameRateText.setFont(font);
 
     // Assign the actual message
     messageText.setString("Press Enter to start!");
     scoreText.setString("Score = 0");
+    frameRateText.setString("FPS = ");
 
     // Make it really big
     messageText.setCharacterSize(75);
@@ -120,6 +136,81 @@ int main()
 
     scoreText.setPosition(20, 20);
 
+    // Prepare 6 branches
+    Texture textureBranch;
+    textureBranch.loadFromFile("graphics/branch.png");
+
+    // Set the texture for each branch sprite
+    for (int i = 0; i < NUM_BRANCHES; i++)
+    {
+        branches[i].setTexture(textureBranch);
+        branches[i].setPosition(-2000, -2000);
+
+        // Set the sprite's origin to dead center
+        // We can then spin it arround without changing its position
+        branches[i].setOrigin(220, 20);
+    }
+
+    // Prepare the player
+    Texture texturePlayer;
+    texturePlayer.loadFromFile("graphics/player.png");
+    Sprite spritePlayer;
+    spritePlayer.setTexture(texturePlayer);
+    spritePlayer.setPosition(580, 720);
+
+    // The player starts on the left
+    Side playerSide = Side::LEFT;
+
+    // Prepare the gravestone
+    Texture textureRIP;
+    textureRIP.loadFromFile("graphics/rip.png");
+    Sprite spriteRIP;
+    spriteRIP.setTexture(textureRIP);
+    spriteRIP.setPosition(600, 860);
+
+    // Prepare the axe
+    Texture textureAxe;
+    textureAxe.loadFromFile("graphics/axe.png");
+    Sprite spriteAxe;
+    spriteAxe.setTexture(textureAxe);
+    spriteAxe.setPosition(700, 830);
+
+    // Line the axe up with the tree
+    const float AXE_POSITION_LEFT = 700;
+    const float AXE_POSITION_RIGHT = 1075;
+
+    // Prepare the flying log
+    Texture textureLog;
+    textureLog.loadFromFile("graphics/log.png");
+    Sprite spriteLog;
+    spriteLog.setTexture(textureLog);
+    spriteLog.setPosition(810, 720);
+
+    // Some other useful log related variables
+    bool logActive = false;
+    float logSpeedX = 1000;
+    float logSpeedY = -1500;
+
+    // Control the player input
+    bool acceptInput = false;
+
+    // Prepare the sound
+    SoundBuffer chopBuffer;
+    chopBuffer.loadFromFile("sound/chop.wav");
+    Sound chop;
+    chop.setBuffer(chopBuffer);
+
+    SoundBuffer deathBuffer;
+    deathBuffer.loadFromFile("sound/death.wav");
+    Sound death;
+    death.setBuffer(deathBuffer);
+
+    // Out of time
+    SoundBuffer ootBuffer;
+    ootBuffer.loadFromFile("sound/out_of_time.wav");
+    Sound outOfTime;
+    outOfTime.setBuffer(ootBuffer);
+
     while (window.isOpen())
     {
         /*
@@ -128,18 +219,116 @@ int main()
         **********************************
         */
 
+        Event event;
+
+        while (window.pollEvent(event))
+        {
+            if (event.type == Event::KeyReleased && !paused)
+            {
+                // Listen for key press again
+                acceptInput = true;
+
+                // Hide the axe
+                spriteAxe.setPosition(2000, spriteAxe.getPosition().y);
+            }
+        }
+
         if (Keyboard::isKeyPressed(Keyboard::Escape))
         {
             window.close();
         }
 
-        if (Keyboard::isKeyPressed(Keyboard::Enter))
+        if (Keyboard::isKeyPressed(Keyboard::Return))
         {
             paused = false;
 
             // Reset the time and the score
             score = 0;
             timeRemaining = 6;
+
+            // Make all the branches disappear
+            for (int i = 0; i < NUM_BRANCHES; i++)
+            {
+                branchPositions[i] = Side::NONE;
+            }
+
+            // Make sure the gravestone is hidden
+            spriteRIP.setPosition(675, 2000);
+
+            // Move the player into position
+            spritePlayer.setPosition(580, 720);
+
+            acceptInput = true;
+        }
+
+        // Wrap the player controls to make sure we are accepting input
+        if (acceptInput)
+        {
+            // First handle pressing the right cursor key
+            if (Keyboard::isKeyPressed(Keyboard::Right))
+            {
+                // Make sure the player is on the right
+                playerSide = Side::RIGHT;
+
+                score++;
+
+                // Update score text
+                std::string s = "Score = " + std::to_string(score);
+                scoreText.setString(s);
+
+                // Add the amount of time remaining
+                timeRemaining += (2 / score) + .15;
+
+                spriteAxe.setPosition(AXE_POSITION_RIGHT, spriteAxe.getPosition().y);
+
+                spritePlayer.setPosition(1200, 720);
+
+                // Update the branches
+                UpdateBranches(score);
+
+                // Set the log flying to the left
+                spriteLog.setPosition(810, 720);
+                logSpeedX = -5000;
+                logActive = true;
+
+                acceptInput = false;
+
+                // Play a chop sound
+                chop.play();
+            }
+
+            // Handle the left cursor key
+            if (Keyboard::isKeyPressed(Keyboard::Left))
+            {
+                // Make sure the player is on the right
+                playerSide = Side::LEFT;
+
+                score++;
+
+                // Update score text
+                std::string s = "Score = " + std::to_string(score);
+                scoreText.setString(s);
+
+                // Add the amount of time remaining
+                timeRemaining += (2 / score) + .15;
+
+                spriteAxe.setPosition(AXE_POSITION_LEFT, spriteAxe.getPosition().y);
+
+                spritePlayer.setPosition(580, 720);
+
+                // Update the branches
+                UpdateBranches(score);
+
+                // Set the log flying to the left
+                spriteLog.setPosition(810, 720);
+                logSpeedX = 5000;
+                logActive = true;
+
+                acceptInput = false;
+
+                // Play a chop sound
+                chop.play();
+            }
         }
 
         /*
@@ -171,6 +360,9 @@ int main()
                 FloatRect textRect = messageText.getLocalBounds();
                 messageText.setOrigin(textRect.left + textRect.width / 2.0f, textRect.top + textRect.height / 2.0f);
                 messageText.setPosition(1920 / 2.0f, 1080 / 2.0f);
+
+                // Play the out of time sound
+                outOfTime.play();
             }
 
             if (!beeActive)
@@ -277,9 +469,71 @@ int main()
                 }
             }
 
-            // Update score text
-            std::string s = "Score = " + std::to_string(score);
-            scoreText.setString(s);
+            // Update the branch sprites
+            for (int i = 0; i < NUM_BRANCHES; i++)
+            {
+                float height = i * 150;
+                if (branchPositions[i] == Side::LEFT)
+                {
+                    // Move sprite to the left side
+                    branches[i].setPosition(610, height);
+
+                    // Flip the sprite round the other way
+                    branches[i].setRotation(180);
+                }
+                else if (branchPositions[i] == Side::RIGHT)
+                {
+                    // Move the sprite to the right side
+                    branches[i].setPosition(1330, height);
+
+                    // Set the sprite rotation to normal
+                    branches[i].setRotation(0);
+                }
+                else
+                {
+                    // Hide the branch
+                    branches[i].setPosition(3000, height);
+                }
+            }
+
+            // Handle flying log
+            if (logActive)
+            {
+                spriteLog.setPosition(spriteLog.getPosition().x + (logSpeedX * dt.asSeconds()), spriteLog.getPosition().y + (logSpeedY * dt.asSeconds()));
+                
+                // Has the log reached the right hand edge?
+                if (spriteLog.getPosition().x < -100 || spriteLog.getPosition().x > 2000)
+                {
+                    // Set it up already to be a whole new log next frame
+                    logActive = false;
+                    spriteLog.setPosition(810, 720);
+                }
+            }
+
+            // Has the player been squished by a branch
+            if (branchPositions[5] == playerSide)
+            {
+                // Death
+                paused = true;
+                acceptInput = false;
+
+                // Draw the gravestone
+                spriteRIP.setPosition(525, 760);
+
+                // Hide the player
+                spritePlayer.setPosition(2000, 660);
+
+                // Change the text of the message
+                messageText.setString("SQUISHED!");
+
+                // Center it on the screen
+                FloatRect textRect = messageText.getLocalBounds();
+                messageText.setOrigin(textRect.left + textRect.width / 2.0f, textRect.top + textRect.height / 2.0f);
+                messageText.setPosition(1920 / 2.0f, 1080 / 2.0f);
+
+                // Play the death sound
+                death.play();
+            }
         }
 
         /*
@@ -299,8 +553,26 @@ int main()
         window.draw(spriteCloud2);
         window.draw(spriteCloud3);
 
+        // Draw the branches
+        for (int i = 0; i < NUM_BRANCHES; i++)
+        {
+            window.draw(branches[i]);
+        }
+
         // Draw tree
         window.draw(spriteTree);
+
+        // Draw the player
+        window.draw(spritePlayer);
+
+        // Draw the axe
+        window.draw(spriteAxe);
+
+        // Draw the flying log
+        window.draw(spriteLog);
+
+        //Draw the gravestone
+        window.draw(spriteRIP);
 
         // Draw bee
         window.draw(spriteBee);
@@ -308,6 +580,7 @@ int main()
         // Draw score
         window.draw(scoreText);
 
+        // Draw timebar
         window.draw(timeBar);
 
         if (paused)
@@ -321,4 +594,30 @@ int main()
     }
 
     return 0;
+}
+
+void UpdateBranches(int seed) 
+{
+    // Move all the branches down one place
+    for (int i = NUM_BRANCHES - 1; i > 0; i--)
+    {
+        branchPositions[i] = branchPositions[i - 1];
+    }
+
+    // Spawn a new branch at position 0
+    // LEFT, RIGHT or NONE
+    srand((int)time(0) + seed);
+    int r = (rand() % 5);
+    switch (r)
+    {
+        case 0:
+            branchPositions[0] = Side::LEFT;
+            break;
+        case 1:
+            branchPositions[0] = Side::RIGHT;
+            break;
+        default:
+            branchPositions[0] = Side::NONE;
+            break;
+    }
 }
